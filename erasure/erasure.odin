@@ -8,40 +8,51 @@ import "core:os"
 import "core:strconv"
 import "core:strings"
 
-import "dependencies:cli" // https://github.com/GoNZooo/odin-cli
-
 Erasure_Error :: union {
 	Unable_To_Read_File,
-	Parse_Error,
+	Argument_Parse_Error,
 	mem.Allocator_Error,
 }
 
-Parse_Error :: struct {}
+Argument_Parse_Error :: union {
+	Missing_Argument,
+	Wrong_Argument,
+	Illegal_Argument,
+}
+
+Missing_Argument :: struct {
+	field: string,
+}
+
+Wrong_Argument :: struct {
+	field: string,
+}
+
+Illegal_Argument :: struct {
+	reason: string,
+}
 
 Unable_To_Read_File :: struct {
 	filename: string,
 	error:    os.Errno,
 }
 
-Command :: union {
+Sub_Command :: union {
 	Encode,
 	Decode,
 }
 
-Encode :: struct {
-	N:     int `cli:"N,num-code"`,
-	K:     int `cli:"K,num-data"`,
-	w:     int `cli:"w,word-size"`,
-	input: string `cli:"i,input/required"`,
-	shard: string `cli:"s,shard/required"`,
-}
+Encode :: struct {}
 
-Decode :: struct {
-	N:      int `cli:"N,num-code"`,
-	K:      int `cli:"K,num-data"`,
-	w:      int `cli:"w,word-size"`,
-	output: string `cli:"o,output/required"`,
-	shard:  string `cli:"s,shard/required"`,
+Decode :: struct {}
+
+Command :: struct {
+	sub:  Sub_Command,
+	N:    int,
+	K:    int,
+	w:    int,
+	file: string,
+	code: string,
 }
 
 /*
@@ -53,12 +64,12 @@ Decode :: struct {
       decode              decode data
     
     General Options:
-      -N                  code chunks in a block # default: 5
-      -K                  data chunks in a block # default: 3
-      -w                  bytes in a word in a chunks (u8|u16|u32|u64) # default: u64
+      -N | --num-code     code chunks in a block # default: 5
+      -K | --num-data     data chunks in a block # default: 3
+      -w | --word-size    bytes in a word in a chunks (1|2|4|8) # default: 8
     
       --file              name of data file: input for encoding and output for decoding
-      --shard             prefix of code files: output for encoding and input for decoding
+      --code              prefix of code files: output for encoding and input for decoding
 */
 main :: proc() {
 	context.logger = log.create_console_logger()
@@ -98,35 +109,32 @@ main :: proc() {
 	    General Options:
 	      -N | --num-code     code chunks in a block # default: 5
 	      -K | --num-data     data chunks in a block # default: 3
-	      -w | --word-size    bytes in a word in a chunks (u8|u16|u32|u64) # default: u64
-    
-	      --input|output      name of data file: input for encoding and output for decoding
-	      --shard             prefix of code files: output for encoding and input for decoding
+	      -w | --word-size    bytes in a word in a chunks (1|2|4|8) # default: 8
+
+	      --file              name of data file: input for encoding and output for decoding
+	      --code              prefix of code files: output for encoding and input for decoding
 	`
 
 	arguments := os.args[1:]
 	fmt.println("args =", arguments)
 
-	if len(arguments) < 3 {
+	if len(arguments) < 5 {
 		fmt.println(usage)
 		os.exit(1)
 	}
 
-	command, remaining_args, cli_error := cli.parse_arguments_as_type(
-		arguments,
-		Command,
-	)
-	defer delete(remaining_args)
+	command, cli_error := parse_arguments(arguments)
+
 	if cli_error != nil {
 		fmt.eprintln("Failed to parse arguments:", cli_error)
 		os.exit(1)
 	}
 
-	switch c in command {
+	switch c in command.sub {
 	case Encode:
-		encode(c)
+		encode(command)
 	case Decode:
-		decode(c)
+		decode(command)
 	case:
 		fmt.println(usage)
 		os.exit(1)
@@ -139,14 +147,107 @@ main :: proc() {
 	// }
 }
 
-encode :: proc(c: Encode) {
-	fmt.printf("N=%d, K=%d, w=%d\n", c.N, c.K, c.w)
-	fmt.printf("input=%s, shard=%s\n", c.input, c.shard)
+parse_int_argument :: proc(
+	arg: string,
+) -> (
+	value: int,
+	error: Argument_Parse_Error,
+) {
+	v := strconv.atoi(arg)
+	if v > 0 do return v, nil
+	return 0, Wrong_Argument{field = arg}
 }
 
-decode :: proc(c: Decode) {
+parse_arguments :: proc(
+	arguments: []string,
+) -> (
+	command: Command,
+	error: Argument_Parse_Error,
+) {
+	command.N = 5
+	command.K = 3
+	command.w = 8
+
+	switch arguments[0] {
+	case "encode":
+		command.sub = Encode{}
+	case "decode":
+		command.sub = Decode{}
+	case:
+		return command, Wrong_Argument{field = arguments[0]}
+	}
+
+	args := arguments[1:]
+
+	for i := 0; i < len(args); i += 1 {
+		switch args[i] {
+		case "-N", "--num-code":
+			i += 1
+			if i < len(args) {
+				command.N = parse_int_argument(args[i]) or_return
+			} else {
+				return command, Missing_Argument{field = "num-code"}
+			}
+		case "-K", "--num-data":
+			i += 1
+			if i < len(args) {
+				command.K = parse_int_argument(args[i]) or_return
+			} else {
+				return command, Missing_Argument{field = "num-data"}
+			}
+		case "-w", "--word-size":
+			i += 1
+			if i < len(args) {
+				w := parse_int_argument(args[i]) or_return
+				if w == 1 || w == 2 || w == 4 || w == 8 {
+					command.w = w
+				} else {
+					return command, Wrong_Argument{field = args[i]}
+				}
+			} else {
+				return command, Missing_Argument{field = "word-size"}
+			}
+		case "--file":
+			i += 1
+			if i < len(args) {
+				command.file = args[i]
+			} else {
+				return command, Missing_Argument{field = "file"}
+			}
+		case "--code":
+			i += 1
+			if i < len(args) {
+				command.code = args[i]
+			} else {
+				return command, Missing_Argument{field = "code"}
+			}
+		case:
+			return command, Illegal_Argument{reason = args[i]}
+		}
+	}
+
+	if command.N < command.K {
+		return command, Illegal_Argument{reason = "num-code < num-data"}
+	}
+
+	if command.file == "" {
+		return command, Missing_Argument{field = "file"}
+	}
+	if command.code == "" {
+		return command, Missing_Argument{field = "code"}
+	}
+
+	return command, nil
+}
+
+encode :: proc(c: Command) {
 	fmt.printf("N=%d, K=%d, w=%d\n", c.N, c.K, c.w)
-	fmt.printf("output=%s, shard=%s\n", c.output, c.shard)
+	fmt.printf("input=%s, shard=%s\n", c.file, c.code)
+}
+
+decode :: proc(c: Command) {
+	fmt.printf("N=%d, K=%d, w=%d\n", c.N, c.K, c.w)
+	fmt.printf("output=%s, shard=%s\n", c.file, c.code)
 }
 
 process_file :: proc(filename: string) -> Erasure_Error {

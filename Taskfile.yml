@@ -17,7 +17,7 @@ tasks:
 
   build:
     cmds:
-      - odin build erasure -collection:dependencies=dependencies -out=bin/erasure
+      - odin build erasure -out=bin/erasure
     aliases:
       - b
     silent: true
