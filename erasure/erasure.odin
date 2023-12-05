@@ -199,7 +199,8 @@ parse_arguments :: proc(
 			i += 1
 			if i < len(args) {
 				w := parse_int_argument(args[i]) or_return
-				if w == 1 || w == 2 || w == 4 || w == 8 {
+				allowed: bit_set[1 ..= 8] = {1, 2, 4, 8}
+				if w in allowed {
 					command.w = w
 				} else {
 					return command, Wrong_Argument{field = args[i]}
