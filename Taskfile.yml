@@ -1,0 +1,29 @@
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - task: run
+
+  run:
+    deps:
+      - build
+    cmds:
+      - bin/erasure {{.CLI_ARGS}}
+    aliases:
+      - r
+    silent: true
+    method: none
+
+  build:
+    cmds:
+      - odin build erasure -collection:dependencies=dependencies -out=bin/erasure
+    aliases:
+      - b
+    silent: true
+    sources:
+      - './erasure/**/*.odin'
+    generates:
+      - bin/erasure
+
+interval: 250ms
