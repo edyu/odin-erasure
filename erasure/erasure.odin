@@ -228,7 +228,7 @@ parse_arguments :: proc(
 	}
 
 	if command.N < command.K {
-		return command, Illegal_Argument{reason = "num-code < num-data"}
+		return command, Illegal_Argument{reason = "1 <= K <= N"}
 	}
 
 	if command.file == "" {
