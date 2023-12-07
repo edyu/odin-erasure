@@ -79,19 +79,13 @@ main :: proc() {
 
 	defer {
 		if len(track.allocation_map) > 0 {
-			fmt.eprintf(
-				"=== %v allocations not freed: ===\n",
-				len(track.allocation_map),
-			)
+			fmt.eprintf("=== %v allocations not freed: ===\n", len(track.allocation_map))
 			for _, entry in track.allocation_map {
 				fmt.eprintf("- %v bytes @ %v\n", entry.size, entry.location)
 			}
 		}
 		if len(track.bad_free_array) > 0 {
-			fmt.eprintf(
-				"=== %v incorrect frees: ===\n",
-				len(track.bad_free_array),
-			)
+			fmt.eprintf("=== %v incorrect frees: ===\n", len(track.bad_free_array))
 			for entry in track.bad_free_array {
 				fmt.eprintf("- %p @ %v\n", entry.memory, entry.location)
 			}
@@ -147,23 +141,13 @@ main :: proc() {
 	// }
 }
 
-parse_int_argument :: proc(
-	arg: string,
-) -> (
-	value: int,
-	error: Argument_Parse_Error,
-) {
+parse_int_argument :: proc(arg: string) -> (value: int, error: Argument_Parse_Error) {
 	v := strconv.atoi(arg)
 	if v > 0 do return v, nil
 	return 0, Wrong_Argument{field = arg}
 }
 
-parse_arguments :: proc(
-	arguments: []string,
-) -> (
-	command: Command,
-	error: Argument_Parse_Error,
-) {
+parse_arguments :: proc(arguments: []string) -> (command: Command, error: Argument_Parse_Error) {
 	command.N = 5
 	command.K = 3
 	command.w = 8
@@ -262,3 +246,4 @@ process_file :: proc(filename: string) -> Erasure_Error {
 
 	return nil
 }
+

@@ -97,13 +97,7 @@ field_multiply :: proc(bff: Binary_Finite_Field, a, b: int) -> int {
 	return field_validate(bff, result)
 }
 
-field_invert :: proc(
-	bff: Binary_Finite_Field,
-	a: int,
-) -> (
-	value: int,
-	err: Field_Error,
-) {
+field_invert :: proc(bff: Binary_Finite_Field, a: int) -> (value: int, err: Field_Error) {
 	if a == 0 do return a, No_Inverse{number = a}
 
 	for b := 0; b < bff.order; b += 1 {
@@ -113,24 +107,13 @@ field_invert :: proc(
 	return a, No_Inverse{number = a}
 }
 
-field_divide :: proc(
-	bff: Binary_Finite_Field,
-	a, b: int,
-) -> (
-	value: int,
-	err: Field_Error,
-) {
+field_divide :: proc(bff: Binary_Finite_Field, a, b: int) -> (value: int, err: Field_Error) {
 	field_validate(bff, a)
 	inverse := field_invert(bff, b) or_return
 	return field_multiply(bff, a, inverse), nil
 }
 
-field_matrix4 :: proc(
-	bff: Binary_Finite_Field,
-	a: int,
-) -> (
-	result: matrix[4, 4]int,
-) {
+field_matrix4 :: proc(bff: Binary_Finite_Field, a: int) -> (result: matrix[4, 4]int) {
 	assert(bff.n == 4)
 	basis := 1
 	for c := 0; c < bff.n; c += 1 {
@@ -143,12 +126,7 @@ field_matrix4 :: proc(
 	return result
 }
 
-field_matrix3 :: proc(
-	bff: Binary_Finite_Field,
-	a: int,
-) -> (
-	result: matrix[3, 3]int,
-) {
+field_matrix3 :: proc(bff: Binary_Finite_Field, a: int) -> (result: matrix[3, 3]int) {
 	assert(bff.n == 3)
 	basis := 1
 	for c := 0; c < bff.n; c += 1 {
@@ -161,12 +139,7 @@ field_matrix3 :: proc(
 	return result
 }
 
-field_matrix2 :: proc(
-	bff: Binary_Finite_Field,
-	a: int,
-) -> (
-	result: matrix[2, 2]int,
-) {
+field_matrix2 :: proc(bff: Binary_Finite_Field, a: int) -> (result: matrix[2, 2]int) {
 	assert(bff.n == 2)
 	basis := 1
 	for c := 0; c < bff.n; c += 1 {
@@ -179,13 +152,7 @@ field_matrix2 :: proc(
 	return result
 }
 
-field_matrix_n :: proc(
-	$N: int,
-	bff: Binary_Finite_Field,
-	a: int,
-) -> (
-	result: [N][N]int,
-) {
+field_matrix_n :: proc($N: int, bff: Binary_Finite_Field, a: int) -> (result: [N][N]int) {
 	assert(bff.n == N)
 	basis := 1
 	for c := 0; c < bff.n; c += 1 {
@@ -198,12 +165,7 @@ field_matrix_n :: proc(
 	return result
 }
 
-field_matrix :: proc(
-	bff: Binary_Finite_Field,
-	a: int,
-) -> (
-	result: [dynamic][dynamic]int,
-) {
+field_matrix :: proc(bff: Binary_Finite_Field, a: int) -> (result: [dynamic][dynamic]int) {
 	basis := 1
 	for c := 0; c < bff.n; c += 1 {
 		p := field_multiply(bff, a, basis)
@@ -224,11 +186,7 @@ test_field_matrix :: proc(t: ^testing.T) {
 	for i := 1; i <= 7; i += 1 {
 		bff, err := field_init(i)
 		if err != nil {
-			fmt.eprintf(
-				"cannot initialize binary finite field for %d: %v\n",
-				i,
-				err,
-			)
+			fmt.eprintf("cannot initialize binary finite field for %d: %v\n", i, err)
 			return
 		}
 		append(&fields, bff)
@@ -285,11 +243,7 @@ test_field_add :: proc(t: ^testing.T) {
 	for i := 1; i <= 7; i += 1 {
 		bff, err := field_init(i)
 		if err != nil {
-			fmt.eprintf(
-				"cannot initialize binary finite field for %d: %v\n",
-				i,
-				err,
-			)
+			fmt.eprintf("cannot initialize binary finite field for %d: %v\n", i, err)
 			return
 		}
 		append(&fields, bff)
@@ -319,11 +273,7 @@ test_field_multiply :: proc(t: ^testing.T) {
 	for i := 1; i <= 7; i += 1 {
 		bff, err := field_init(i)
 		if err != nil {
-			fmt.eprintf(
-				"cannot initialize binary finite field for %d: %v\n",
-				i,
-				err,
-			)
+			fmt.eprintf("cannot initialize binary finite field for %d: %v\n", i, err)
 			return
 		}
 		append(&fields, bff)
@@ -357,11 +307,7 @@ test_field_divide :: proc(t: ^testing.T) {
 	for i := 1; i <= 7; i += 1 {
 		bff, err := field_init(i)
 		if err != nil {
-			fmt.eprintf(
-				"cannot initialize binary finite field for %d: %v\n",
-				i,
-				err,
-			)
+			fmt.eprintf("cannot initialize binary finite field for %d: %v\n", i, err)
 			return
 		}
 		append(&fields, bff)
@@ -372,12 +318,7 @@ test_field_divide :: proc(t: ^testing.T) {
 			for b := 1; b < f.order; b += 1 {
 				result, err := field_divide(f, a, b)
 				if err != nil {
-					fmt.eprintf(
-						"cannot field_divide %d by %d: %v\n",
-						a,
-						b,
-						err,
-					)
+					fmt.eprintf("cannot field_divide %d by %d: %v\n", a, b, err)
 					return
 				}
 				testing.expect(t, result >= 0 && result < f.order)
@@ -390,3 +331,4 @@ test_field_divide :: proc(t: ^testing.T) {
 		}
 	}
 }
+
