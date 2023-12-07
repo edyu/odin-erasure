@@ -9,7 +9,7 @@ import "core:strconv"
 import "core:strings"
 import "core:testing"
 
-BFF_Error :: union {
+Field_Error :: union {
 	Value_Error,
 	No_Inverse,
 }
@@ -28,7 +28,7 @@ Binary_Finite_Field :: struct {
 	divisor: int,
 }
 
-field_init :: proc(n: int) -> (bff: Binary_Finite_Field, err: BFF_Error) {
+field_init :: proc(n: int) -> (bff: Binary_Finite_Field, err: Field_Error) {
 	switch n {
 	case 1:
 		bff.divisor = 3
@@ -102,7 +102,7 @@ field_invert :: proc(
 	a: int,
 ) -> (
 	value: int,
-	err: BFF_Error,
+	err: Field_Error,
 ) {
 	if a == 0 do return a, No_Inverse{number = a}
 
@@ -118,11 +118,164 @@ field_divide :: proc(
 	a, b: int,
 ) -> (
 	value: int,
-	err: BFF_Error,
+	err: Field_Error,
 ) {
 	field_validate(bff, a)
 	inverse := field_invert(bff, b) or_return
 	return field_multiply(bff, a, inverse), nil
+}
+
+field_matrix4 :: proc(
+	bff: Binary_Finite_Field,
+	a: int,
+) -> (
+	result: matrix[4, 4]int,
+) {
+	assert(bff.n == 4)
+	basis := 1
+	for c := 0; c < bff.n; c += 1 {
+		p := field_multiply(bff, a, basis)
+		basis <<= 1
+		for r := 0; r < bff.n; r += 1 {
+			result[r, c] = p
+		}
+	}
+	return result
+}
+
+field_matrix3 :: proc(
+	bff: Binary_Finite_Field,
+	a: int,
+) -> (
+	result: matrix[3, 3]int,
+) {
+	assert(bff.n == 3)
+	basis := 1
+	for c := 0; c < bff.n; c += 1 {
+		p := field_multiply(bff, a, basis)
+		basis <<= 1
+		for r := 0; r < bff.n; r += 1 {
+			result[r, c] = p
+		}
+	}
+	return result
+}
+
+field_matrix2 :: proc(
+	bff: Binary_Finite_Field,
+	a: int,
+) -> (
+	result: matrix[2, 2]int,
+) {
+	assert(bff.n == 2)
+	basis := 1
+	for c := 0; c < bff.n; c += 1 {
+		p := field_multiply(bff, a, basis)
+		basis <<= 1
+		for r := 0; r < bff.n; r += 1 {
+			result[r, c] = p
+		}
+	}
+	return result
+}
+
+field_matrix_n :: proc(
+	$N: int,
+	bff: Binary_Finite_Field,
+	a: int,
+) -> (
+	result: [N][N]int,
+) {
+	assert(bff.n == N)
+	basis := 1
+	for c := 0; c < bff.n; c += 1 {
+		p := field_multiply(bff, a, basis)
+		basis <<= 1
+		for r := 0; r < bff.n; r += 1 {
+			result[c][r] = p
+		}
+	}
+	return result
+}
+
+field_matrix :: proc(
+	bff: Binary_Finite_Field,
+	a: int,
+) -> (
+	result: [dynamic][dynamic]int,
+) {
+	basis := 1
+	for c := 0; c < bff.n; c += 1 {
+		p := field_multiply(bff, a, basis)
+		basis <<= 1
+		col: [dynamic]int
+		for r := 0; r < bff.n; r += 1 {
+			append(&col, p)
+		}
+		append(&result, col)
+	}
+	return result
+}
+
+@(test)
+test_field_matrix :: proc(t: ^testing.T) {
+	fields: [dynamic]Binary_Finite_Field
+	defer delete(fields)
+	for i := 1; i <= 7; i += 1 {
+		bff, err := field_init(i)
+		if err != nil {
+			fmt.eprintf(
+				"cannot initialize binary finite field for %d: %v\n",
+				i,
+				err,
+			)
+			return
+		}
+		append(&fields, bff)
+	}
+
+	for i := 1; i <= 7; i += 1 {
+		if i == 3 {
+			mm := field_matrix3(fields[2], 3)
+			fmt.printf("matrix: %v\n", mm)
+			ms := field_matrix_n(3, fields[2], 3)
+			md := field_matrix(fields[2], 3)
+			for r := 0; r < i; r += 1 {
+				for c := 0; c < i; c += 1 {
+					testing.expect(t, mm[r, c] == ms[c][r])
+					testing.expect(t, mm[r, c] == md[c][r])
+				}
+
+			}
+		}
+		if i == 4 {
+			mm := field_matrix4(fields[3], 4)
+			fmt.printf("matrix: %v\n", mm)
+			ms := field_matrix_n(4, fields[3], 4)
+			md := field_matrix(fields[3], 4)
+			for r := 0; r < i; r += 1 {
+				for c := 0; c < i; c += 1 {
+					testing.expect(t, mm[r, c] == ms[c][r])
+					testing.expect(t, mm[r, c] == md[c][r])
+				}
+			}
+		}
+		if i == 5 {
+			ms := field_matrix_n(5, fields[i - 1], i)
+			fmt.printf("matrix: %v\n", ms)
+			md := field_matrix(fields[i - 1], i)
+			for r := 0; r < i; r += 1 {
+				for c := 0; c < i; c += 1 {
+					testing.expect(t, ms[c][r] == md[c][r])
+				}
+			}
+		}
+		if i > 5 {
+			md := field_matrix(fields[i - 1], i)
+			fmt.printf("matrix: %v\n", md)
+		}
+	}
+
 }
 
 @(test)
@@ -219,7 +372,12 @@ test_field_divide :: proc(t: ^testing.T) {
 			for b := 1; b < f.order; b += 1 {
 				result, err := field_divide(f, a, b)
 				if err != nil {
-					fmt.eprintf("cannot field_divide %d by %d: %v\n", a, b, err)
+					fmt.eprintf(
+						"cannot field_divide %d by %d: %v\n",
+						a,
+						b,
+						err,
+					)
 					return
 				}
 				testing.expect(t, result >= 0 && result < f.order)
