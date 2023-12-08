@@ -9,6 +9,7 @@ import "core:strconv"
 import "core:strings"
 
 Erasure_Error :: union {
+	Field_Error,
 	Unable_To_Read_File,
 	Argument_Parse_Error,
 	mem.Allocator_Error,
@@ -56,7 +57,7 @@ Command :: struct {
 }
 
 /*
-    Usage: eraser [command] [options]
+    Usage: erasure [command] [options]
     
     Commands:
     
@@ -93,7 +94,7 @@ main :: proc() {
 		mem.tracking_allocator_destroy(&track)
 	}
 
-	usage :: `Usage: eraser [command] [options]
+	usage :: `Usage: erasure [command] [options]
     
 	    Commands:
     
@@ -126,9 +127,9 @@ main :: proc() {
 
 	switch c in command.sub {
 	case Encode:
-		encode(command)
+		do_encode(command)
 	case Decode:
-		decode(command)
+		do_decode(command)
 	case:
 		fmt.println(usage)
 		os.exit(1)
@@ -225,12 +226,12 @@ parse_arguments :: proc(arguments: []string) -> (command: Command, error: Argume
 	return command, nil
 }
 
-encode :: proc(c: Command) {
+do_encode :: proc(c: Command) {
 	fmt.printf("N=%d, K=%d, w=%d\n", c.N, c.K, c.w)
 	fmt.printf("input=%s, shard=%s\n", c.file, c.code)
 }
 
-decode :: proc(c: Command) {
+do_decode :: proc(c: Command) {
 	fmt.printf("N=%d, K=%d, w=%d\n", c.N, c.K, c.w)
 	fmt.printf("output=%s, shard=%s\n", c.file, c.code)
 }
