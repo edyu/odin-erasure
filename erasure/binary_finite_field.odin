@@ -165,6 +165,8 @@ field_matrix_n :: proc($N: int, bff: Binary_Finite_Field, a: int) -> (result: [N
 	return result
 }
 
+// note that the return matrix is [col][row]int
+// so for matrix[r, c], you need to do matrix[c][r]
 field_matrix :: proc(bff: Binary_Finite_Field, a: int) -> (result: [dynamic][dynamic]int) {
 	basis := 1
 	for c := 0; c < bff.n; c += 1 {
@@ -195,7 +197,6 @@ test_field_matrix :: proc(t: ^testing.T) {
 	for i := 1; i <= 7; i += 1 {
 		if i == 3 {
 			mm := field_matrix3(fields[2], 3)
-			fmt.printf("matrix: %v\n", mm)
 			ms := field_matrix_n(3, fields[2], 3)
 			md := field_matrix(fields[2], 3)
 			for r := 0; r < i; r += 1 {
@@ -208,7 +209,6 @@ test_field_matrix :: proc(t: ^testing.T) {
 		}
 		if i == 4 {
 			mm := field_matrix4(fields[3], 4)
-			fmt.printf("matrix: %v\n", mm)
 			ms := field_matrix_n(4, fields[3], 4)
 			md := field_matrix(fields[3], 4)
 			for r := 0; r < i; r += 1 {
@@ -220,7 +220,6 @@ test_field_matrix :: proc(t: ^testing.T) {
 		}
 		if i == 5 {
 			ms := field_matrix_n(5, fields[i - 1], i)
-			fmt.printf("matrix: %v\n", ms)
 			md := field_matrix(fields[i - 1], i)
 			for r := 0; r < i; r += 1 {
 				for c := 0; c < i; c += 1 {
