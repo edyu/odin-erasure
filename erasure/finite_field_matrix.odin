@@ -17,54 +17,60 @@ Finite_Field_Matrix :: struct {
 	elements: [][]int,
 }
 
+matrix_init_cauchy :: proc(num_rows, num_cols: int, field: Binary_Finite_Field,
+) -> (m: Finite_Field_Matrix, err: Field_Error,
+) {
+	m = matrix_init(num_rows, num_cols, field)
+	matrix_set_cauchy(m) or_return
+	return m, nil
+}
+	
 matrix_init :: proc(
 	num_rows, num_cols: int,
-	n: int,
-) -> (
-	ffm: Finite_Field_Matrix,
-	err: Field_Error,
+	field: Binary_Finite_Field,
+) -> (m: Finite_Field_Matrix,
 ) {
-	ffm.field = field_init(n) or_return
-	ffm.num_rows = num_rows
-	ffm.num_cols = num_cols
-	ffm.elements = make([][]int, num_cols)
+	m.field = field
+	m.num_rows = num_rows
+	m.num_cols = num_cols
+	m.elements = make([][]int, num_cols)
 	for c := 0; c < num_cols; c += 1 {
-		ffm.elements[c] = make([]int, num_rows)
+		m.elements[c] = make([]int, num_rows)
 	}
-	return ffm, nil
+	return m
 }
 
-matrix_deinit :: proc(ffm: Finite_Field_Matrix) {
-	for c := 0; c < ffm.num_cols; c += 1 {
-		delete(ffm.elements[c])
+matrix_deinit :: proc(m: Finite_Field_Matrix) {
+	for c := 0; c < m.num_cols; c += 1 {
+		delete(m.elements[c])
 	}
-	delete(ffm.elements)
+	delete(m.elements)
 }
 
-matrix_num_rows :: proc(ffm: Finite_Field_Matrix) -> int {
-	return len(ffm.elements[0])
+matrix_num_rows :: proc(m: Finite_Field_Matrix) -> int {
+	return len(m.elements[0])
 }
 
-matrix_num_cols :: proc(ffm: Finite_Field_Matrix) -> int {
-	return len(ffm.elements)
+matrix_num_cols :: proc(m: Finite_Field_Matrix) -> int {
+	return len(m.elements)
 }
 
-matrix_get :: proc(ffm: Finite_Field_Matrix, r, c: int) -> int {
-	return ffm.elements[c][r]
+matrix_get :: proc(m: Finite_Field_Matrix, r, c: int) -> int {
+	return m.elements[c][r]
 }
 
-matrix_set :: proc(ffm: Finite_Field_Matrix, r, c: int, v: int) {
-	ffm.elements[c][r] = v
+matrix_set :: proc(m: Finite_Field_Matrix, r, c: int, v: int) {
+	m.elements[c][r] = v
 }
 
-matrix_display :: proc(ffm: Finite_Field_Matrix) {
+matrix_display :: proc(m: Finite_Field_Matrix) {
 	fmt.print("matrix[")
-	for r := 0; r < ffm.num_rows; r += 1 {
-		for c := 0; c < ffm.num_cols; c += 1 {
-			fmt.print(matrix_get(ffm, r, c))
-			if c < ffm.num_cols - 1 {
+	for r := 0; r < m.num_rows; r += 1 {
+		for c := 0; c < m.num_cols; c += 1 {
+			fmt.print(matrix_get(m, r, c))
+			if c < m.num_cols - 1 {
 				fmt.print(", ")
-			} else if r < ffm.num_rows - 1 {
+			} else if r < m.num_rows - 1 {
 				fmt.print("; ")
 			}
 		}
@@ -72,15 +78,15 @@ matrix_display :: proc(ffm: Finite_Field_Matrix) {
 	fmt.println("]")
 }
 
-matrix_set_cauchy :: proc(ffm: Finite_Field_Matrix) -> Field_Error {
-	assert(ffm.field.order >= ffm.num_rows + ffm.num_cols)
-	for r := 0; r < ffm.num_rows; r += 1 {
-		for c := 0; c < ffm.num_cols; c += 1 {
+matrix_set_cauchy :: proc(m: Finite_Field_Matrix) -> Field_Error {
+	assert(m.field.order >= m.num_rows + m.num_cols)
+	for r := 0; r < m.num_rows; r += 1 {
+		for c := 0; c < m.num_cols; c += 1 {
 			matrix_set(
-				ffm,
+				m,
 				r,
 				c,
-				field_invert(ffm.field, field_subtract(ffm.field, r + ffm.num_cols, c)) or_return,
+				field_invert(m.field, field_subtract(m.field, r + m.num_cols, c)) or_return,
 			)
 		}
 	}
@@ -88,167 +94,165 @@ matrix_set_cauchy :: proc(ffm: Finite_Field_Matrix) -> Field_Error {
 }
 
 matrix_submatrix :: proc(
-	ffm: Finite_Field_Matrix,
+	m: Finite_Field_Matrix,
 	excluded_num_rows: []int,
 	excluded_num_cols: []int,
 ) -> (
 	sub: Finite_Field_Matrix,
-	err: Field_Error,
 ) {
-	sub_num_rows := ffm.num_rows - len(excluded_num_rows)
-	sub_num_cols := ffm.num_cols - len(excluded_num_cols)
-	sub = matrix_init(sub_num_rows, sub_num_cols, ffm.field.n) or_return
+	sub_num_rows := m.num_rows - len(excluded_num_rows)
+	sub_num_cols := m.num_cols - len(excluded_num_cols)
+	sub = matrix_init(sub_num_rows, sub_num_cols, m.field)
 	i := 0
-	for r := 0; r < ffm.num_rows; r += 1 {
+	for r := 0; r < m.num_rows; r += 1 {
 		if slice.contains(excluded_num_rows, r) do continue
 		j := 0
-		for c := 0; c < ffm.num_cols; c += 1 {
+		for c := 0; c < m.num_cols; c += 1 {
 			if slice.contains(excluded_num_cols, c) do continue
-			matrix_set(sub, i, j, matrix_get(ffm, r, c))
+			matrix_set(sub, i, j, matrix_get(m, r, c))
 			j += 1
 		}
 		i += 1
 	}
-	return sub, nil
+	return sub
 }
 
-matrix_determinant :: proc(ffm: Finite_Field_Matrix) -> (det: int, err: Field_Error) {
-	assert(ffm.num_rows == ffm.num_cols)
+matrix_determinant :: proc(m: Finite_Field_Matrix) -> (det: int) {
+	assert(m.num_rows == m.num_cols)
 
-	switch ffm.num_rows {
+	switch m.num_rows {
 	case 1:
-		return matrix_get(ffm, 0, 0), nil
+		return matrix_get(m, 0, 0)
 	case:
-		for c := 0; c < ffm.num_cols; c += 1 {
-			sub := matrix_submatrix(ffm, {0}, {c}) or_return
+		for c := 0; c < m.num_cols; c += 1 {
+			sub := matrix_submatrix(m, {0}, {c})
 			defer matrix_deinit(sub)
-			sub_det := matrix_determinant(sub) or_return
-			x := field_multiply(ffm.field, matrix_get(ffm, 0, c), sub_det)
+			sub_det := matrix_determinant(sub)
+			x := field_multiply(m.field, matrix_get(m, 0, c), sub_det)
 
 			if c % 2 == 1 {
-				x = field_negate(ffm.field, x)
+				x = field_negate(m.field, x)
 			}
-			det = field_add(ffm.field, det, x)
+			det = field_add(m.field, det, x)
 		}
-		return det, nil
+		return det
 	}
 }
 
 matrix_cofactors :: proc(
-	ffm: Finite_Field_Matrix,
+	m: Finite_Field_Matrix,
 ) -> (
 	cof: Finite_Field_Matrix,
-	err: Field_Error,
 ) {
-	assert(ffm.num_rows == ffm.num_cols)
+	assert(m.num_rows == m.num_cols)
 
-	cof = matrix_init(ffm.num_rows, ffm.num_cols, ffm.field.n) or_return
-	for r := 0; r < ffm.num_rows; r += 1 {
-		for c := 0; c < ffm.num_cols; c += 1 {
-			sub := matrix_submatrix(ffm, {r}, {c}) or_return
+	cof = matrix_init(m.num_rows, m.num_cols, m.field)
+	for r := 0; r < m.num_rows; r += 1 {
+		for c := 0; c < m.num_cols; c += 1 {
+			sub := matrix_submatrix(m, {r}, {c})
 			defer matrix_deinit(sub)
-			sub_det := matrix_determinant(sub) or_return
+			sub_det := matrix_determinant(sub)
 			if (r + c) % 2 != 1 {
 				matrix_set(cof, r, c, sub_det)
 			} else {
-				matrix_set(cof, r, c, field_negate(ffm.field, sub_det))
+				matrix_set(cof, r, c, field_negate(m.field, sub_det))
 			}
 		}
 	}
-	return cof, nil
+	return cof
 }
 
-matrix_transpose :: proc(ffm: Finite_Field_Matrix) -> (m: Finite_Field_Matrix, err: Field_Error) {
-	assert(ffm.num_rows == ffm.num_cols)
+matrix_transpose :: proc(m: Finite_Field_Matrix) -> (x: Finite_Field_Matrix) {
+	assert(m.num_rows == m.num_cols)
 
-	m = matrix_init(ffm.num_rows, ffm.num_cols, ffm.field.n) or_return
-	for r := 0; r < ffm.num_rows; r += 1 {
-		for c := 0; c < ffm.num_cols; c += 1 {
-			matrix_set(m, r, c, matrix_get(ffm, c, r))
+	x = matrix_init(m.num_rows, m.num_cols, m.field)
+	for r := 0; r < m.num_rows; r += 1 {
+		for c := 0; c < m.num_cols; c += 1 {
+			matrix_set(x, r, c, matrix_get(m, c, r))
 		}
 	}
 
-	return m, nil
+	return x
 }
 
 matrix_scale :: proc(
-	ffm: Finite_Field_Matrix,
+	m: Finite_Field_Matrix,
 	factor: int,
 ) -> (
-	m: Finite_Field_Matrix,
-	err: Field_Error,
+	x: Finite_Field_Matrix,
 ) {
-	assert(ffm.num_rows == ffm.num_cols)
+	assert(m.num_rows == m.num_cols)
 
-	m = matrix_init(ffm.num_rows, ffm.num_cols, ffm.field.n) or_return
-	for r := 0; r < ffm.num_rows; r += 1 {
-		for c := 0; c < ffm.num_cols; c += 1 {
-			matrix_set(m, r, c, field_multiply(ffm.field, matrix_get(ffm, r, c), factor))
+	x = matrix_init(m.num_rows, m.num_cols, m.field)
+	for r := 0; r < m.num_rows; r += 1 {
+		for c := 0; c < m.num_cols; c += 1 {
+			matrix_set(x, r, c, field_multiply(m.field, matrix_get(m, r, c), factor))
 		}
 	}
 
-	return m, nil
+	return x
 }
 
-matrix_invert :: proc(ffm: Finite_Field_Matrix) -> (m: Finite_Field_Matrix, err: Field_Error) {
-	cof := matrix_cofactors(ffm) or_return
+matrix_invert :: proc(m: Finite_Field_Matrix) -> (x: Finite_Field_Matrix, err: Field_Error) {
+	cof := matrix_cofactors(m)
 	defer matrix_deinit(cof)
-	txp := matrix_transpose(cof) or_return
+	txp := matrix_transpose(cof)
 	defer matrix_deinit(txp)
-	det := matrix_determinant(ffm) or_return
-	return matrix_scale(txp, field_invert(ffm.field, det) or_return)
+	det := matrix_determinant(m)
+	return matrix_scale(txp, field_invert(m.field, det) or_return), nil
 }
 
 matrix_multiply :: proc(
-	ffm: Finite_Field_Matrix,
-	mff: Finite_Field_Matrix,
+	a: Finite_Field_Matrix,
+	b: Finite_Field_Matrix,
 ) -> (
 	m: Finite_Field_Matrix,
-	err: Field_Error,
 ) {
-	assert(ffm.num_cols == mff.num_cols)
+	assert(a.num_cols == b.num_cols)
 
-	m = matrix_init(ffm.num_rows, mff.num_cols, ffm.field.n) or_return
-	for r := 0; r < ffm.num_rows; r += 1 {
-		for c := 0; c < mff.num_cols; c += 1 {
-			for i := 0; i < ffm.num_cols; i += 1 {
+	m = matrix_init(a.num_rows, b.num_cols, a.field)
+	for r := 0; r < a.num_rows; r += 1 {
+		for c := 0; c < b.num_cols; c += 1 {
+			for i := 0; i < a.num_cols; i += 1 {
 				x := matrix_get(m, r, c)
-				y := matrix_get(ffm, r, i)
-				z := matrix_get(mff, i, c)
-				matrix_set(m, r, c, field_add(ffm.field, x, field_multiply(ffm.field, y, z)))
+				y := matrix_get(a, r, i)
+				z := matrix_get(b, i, c)
+				matrix_set(m, r, c, field_add(a.field, x, field_multiply(a.field, y, z)))
 			}
 		}
 	}
 
-	return m, nil
+	return m
 }
 
-matrix_binary_rep :: proc(ffm: Finite_Field_Matrix) -> (m: Finite_Field_Matrix, err: Field_Error) {
-	m = matrix_init(ffm.num_rows * ffm.field.n, ffm.num_cols * ffm.field.n, 1) or_return
-	for r := 0; r < ffm.num_rows; r += 1 {
-		for c := 0; c < ffm.num_cols; c += 1 {
-			a := matrix_get(ffm, r, c)
-			mat_a := field_matrix(ffm.field, a)
-			defer for i := 0; i < ffm.field.n; i += 1 do delete(mat_a[i])
+matrix_binary_rep :: proc(m: Finite_Field_Matrix) -> (x: Finite_Field_Matrix, err: Field_Error) {
+	field := field_init(1) or_return
+	x = matrix_init(m.num_rows * m.field.n, m.num_cols * m.field.n, field)
+	for r := 0; r < m.num_rows; r += 1 {
+		for c := 0; c < m.num_cols; c += 1 {
+			a := matrix_get(m, r, c)
+			mat_a := field_matrix(m.field, a)
+			defer for i := 0; i < m.field.n; i += 1 do delete(mat_a[i])
 			defer delete(mat_a)
-			for i := 0; i < ffm.field.n; i += 1 {
-				for j := 0; j < ffm.field.n; j += 1 {
+			for i := 0; i < m.field.n; i += 1 {
+				for j := 0; j < m.field.n; j += 1 {
 					matrix_set(
-						m,
-						r * ffm.field.n + i,
-						c * ffm.field.n + j,
-						field_validate(ffm.field, mat_a[j][i]),
+						x,
+						r * m.field.n + i,
+						c * m.field.n + j,
+						field_validate(m.field, mat_a[j][i]),
 					)
 				}
 			}
 		}
 	}
-	return m, nil
+	return x, nil
 }
 
 @(test)
 test_matrix_display :: proc(t: ^testing.T) {
-	m, err := matrix_init(4, 5, 3)
+	field, _ := field_init(3)
+	m := matrix_init(4, 5, field)
 	defer matrix_deinit(m)
 	v := 1
 	for i := 0; i < m.num_rows; i += 1 {
@@ -262,9 +266,9 @@ test_matrix_display :: proc(t: ^testing.T) {
 
 @(test)
 test_matrix_set_cauchy :: proc(t: ^testing.T) {
-	m, err := matrix_init(5, 3, 3)
+	field, _ := field_init(3)
+	m, _ := matrix_init_cauchy(5, 3, field)
 	defer matrix_deinit(m)
-	matrix_set_cauchy(m)
 
 	testing.expect(
 		t,
@@ -345,11 +349,11 @@ test_matrix_set_cauchy :: proc(t: ^testing.T) {
 
 @(test)
 test_matrix_submatrix :: proc(t: ^testing.T) {
-	i, _ := matrix_init(5, 3, 3)
+	field, _ := field_init(3)
+	i, _ := matrix_init_cauchy(5, 3, field)
 	defer matrix_deinit(i)
-	matrix_set_cauchy(i)
 
-	m, _ := matrix_submatrix(i, {0, 1}, {})
+	m := matrix_submatrix(i, {0, 1}, {})
 	defer matrix_deinit(m)
 
 	testing.expect(
@@ -401,14 +405,14 @@ test_matrix_submatrix :: proc(t: ^testing.T) {
 
 @(test)
 test_matrix_cofactors :: proc(t: ^testing.T) {
-	i, _ := matrix_init(5, 3, 3)
+	field, _ := field_init(3)
+	i, _ := matrix_init_cauchy(5, 3, field)
 	defer matrix_deinit(i)
-	matrix_set_cauchy(i)
 
-	s, _ := matrix_submatrix(i, {0, 1}, {})
+	s := matrix_submatrix(i, {0, 1}, {})
 	defer matrix_deinit(s)
 
-	m, _ := matrix_cofactors(s)
+	m := matrix_cofactors(s)
 	defer matrix_deinit(m)
 
 	testing.expect(
@@ -460,11 +464,11 @@ test_matrix_cofactors :: proc(t: ^testing.T) {
 
 @(test)
 test_matrix_inverse :: proc(t: ^testing.T) {
-	i, _ := matrix_init(5, 3, 3)
+	field, _ := field_init(3)
+	i, _ := matrix_init_cauchy(5, 3, field)
 	defer matrix_deinit(i)
-	matrix_set_cauchy(i)
 
-	s, _ := matrix_submatrix(i, {0, 1}, {})
+	s := matrix_submatrix(i, {0, 1}, {})
 	defer matrix_deinit(s)
 
 	m, _ := matrix_invert(s)
@@ -519,43 +523,41 @@ test_matrix_inverse :: proc(t: ^testing.T) {
 
 @(test)
 test_matrix_determinant :: proc(t: ^testing.T) {
-	m, err := matrix_init(2, 2, 2)
+	a, _ := field_init(2)
+	m, _ := matrix_init_cauchy(2, 2, a)
 	defer matrix_deinit(m)
-	matrix_set_cauchy(m)
 	det: int
-	det, err = matrix_determinant(m)
+	det = matrix_determinant(m)
 	testing.expect(t, det == 1, fmt.tprintf("expected det: %v, got %v", 5, det))
-	m2: Finite_Field_Matrix
-	m2, err = matrix_init(3, 3, 3)
+	b, _ := field_init(3)
+	m2, _ := matrix_init_cauchy(3, 3, b)
 	defer matrix_deinit(m2)
-	matrix_set_cauchy(m2)
-	det, err = matrix_determinant(m2)
+	det = matrix_determinant(m2)
 	testing.expect(t, det == 7, fmt.tprintf("expected det: %v, got %v", 7, det))
-	m3: Finite_Field_Matrix
-	m3, err = matrix_init(4, 4, 4)
+	c, _ := field_init(4)
+	m3, _ := matrix_init_cauchy(4, 4, c)
 	defer matrix_deinit(m3)
-	matrix_set_cauchy(m3)
-	det, err = matrix_determinant(m3)
+	det = matrix_determinant(m3)
 	testing.expect(t, det == 7, fmt.tprintf("expected det: %v, got %v", 7, det))
 }
 
 @(test)
 test_matrix_invertible_submatrices :: proc(t: ^testing.T) {
-	m, err := matrix_init(5, 3, 3)
+	field, _ := field_init(3)
+	m, _ := matrix_init_cauchy(5, 3, field)
 	defer matrix_deinit(m)
-	matrix_set_cauchy(m)
 
 	num_num_rows_to_exclude := m.num_rows - m.num_cols
 	for excluded_num_rows in choose({0, 1, 2, 3, 4}, num_num_rows_to_exclude) {
 		fmt.printf("excluding %v...\n", excluded_num_rows)
-		submatrix, _ := matrix_submatrix(m, excluded_num_rows[:], {})
+		submatrix := matrix_submatrix(m, excluded_num_rows[:], {})
 		defer matrix_deinit(submatrix)
 		testing.expect(t, m.num_cols == submatrix.num_cols)
 		inverse, _ := matrix_invert(submatrix)
 		defer matrix_deinit(inverse)
-		product1, _ := matrix_multiply(inverse, submatrix)
+		product1 := matrix_multiply(inverse, submatrix)
 		defer matrix_deinit(product1)
-		product2, _ := matrix_multiply(submatrix, inverse)
+		product2 := matrix_multiply(submatrix, inverse)
 		defer matrix_deinit(product2)
 		for r in 0 ..< product1.num_rows {
 			for c in 0 ..< product1.num_cols {
@@ -593,9 +595,9 @@ test_matrix_invertible_submatrices :: proc(t: ^testing.T) {
 
 @(test)
 test_matrix_binary_rep :: proc(t: ^testing.T) {
-	m, err := matrix_init(5, 3, 3)
+	field, _ := field_init(3)
+	m, _ := matrix_init_cauchy(5, 3, field)
 	defer matrix_deinit(m)
-	matrix_set_cauchy(m)
 
 	for a in 0..<m.field.order {
 		mat_a := field_matrix(m.field, a)
