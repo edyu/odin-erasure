@@ -1,5 +1,6 @@
 package erasure
 
+import "core:bufio"
 import "core:fmt"
 import "core:io"
 import "core:log"
@@ -21,7 +22,12 @@ Erasure_Coder :: struct {
 	code_block_size: int,
 }
 
-init_erasure_coder :: proc(N, K, w: int) -> (coder: Erasure_Coder, err: Field_Error) {
+init_erasure_coder :: proc(
+	N, K, w: int,
+) -> (
+	coder: Erasure_Coder,
+	err: Field_Error,
+) {
 	coder.N = N
 	coder.K = K
 	assert(slice.contains([]int{1, 2, 4, 8}, w))
@@ -47,14 +53,12 @@ read_data_block :: proc(
 ) {
 	block_size: int
 
-	buffer := make([]u8, coder.w)
-	defer delete(buffer)
+	buffer: [size_of(T)]u8
 
 	block_ints = make([]T, coder.field.n * coder.K)
 
 	for i in 0 ..< len(block_ints) {
-		// read_size := read(in_fifo, &buffer) or_return
-		read_size := 0
+		read_size := io.read(in_fifo, buffer[:]) or_return
 		block_size += read_size
 		if read_size < len(buffer) {
 			buffer[len(buffer) - 1] = u8(block_size)
@@ -68,28 +72,30 @@ read_data_block :: proc(
 read_code_block :: proc(
 	coder: Erasure_Coder,
 	$T: typeid,
-	in_fifos: []io.Reader,
+	in_fifos: []bufio.Lookahead_Reader,
 ) -> (
 	block_ints: []T,
 	done: bool,
 	err: Erasure_Error,
 ) {
-	buffer := make([]u8, coder.w)
-	defer delete(buffer)
+	buffer: [size_of(T)]u8
 
 	block_ints = make([]T, coder.field.n * coder.K)
 
 	for i in 0 ..< len(block_ints) {
-		// read_size := read(in_fifos[math.floor_div(i, coder.field.n)], &buffer) or_return
-		read_size := 0
+		read_size := io.read(
+			in_fifos[math.floor_div(i, coder.field.n)].r,
+			buffer[:],
+		) or_return
 		assert(read_size == len(buffer))
 		block_ints[i] = transmute(T)buffer
 	}
 
-	// return block_ints,
-	// 	len(in_fifos[math.floor_div(len(block_ints) - 1, coder.field.n)].peek(1)) == 0,
-	// 	nil
-	return block_ints, false, nil
+	peek := bufio.lookahead_reader_peek(
+		&in_fifos[math.floor_div(len(block_ints) - 1, coder.field.n)],
+		1,
+	) or_return
+	return block_ints, len(peek) == 0, nil
 }
 
 write_code_block :: proc(
@@ -110,19 +116,12 @@ write_code_block :: proc(
 				code_block_ints[i] ~= data_block_ints[j]
 			}
 		}
-		int_buffer: []u8 = make([]u8, coder.w)
-		defer delete(int_buffer)
-		switch coder.w {
-		case 1:
-			int_buffer = transmute([1]u8)code_block_ints[i]
-		case 2:
-			int_buffer = transmute([2]u8)code_block_ints[i]
-		case 4:
-			int_buffer = transmute([4]u8)code_block_ints[i]
-		case 8:
-			int_buffer = transmute([8]u8)code_block_ints[i]
-		}
-		// write(out_fifos[math.floor_div(i, coder.field.n)], out_buffer) or_return
+		buffer: [size_of(T)]u8
+		buffer = transmute([size_of(T)]u8)code_block_ints[i]
+		io.write(
+			out_fifos[math.floor_div(i, coder.field.n)],
+			buffer[:],
+		) or_return
 	}
 	return nil
 }
@@ -139,7 +138,7 @@ write_data_block :: proc(
 	err: Erasure_Error,
 ) {
 	out_buffer: [][]u8 = make([][]u8, coder.field.n * coder.K)
-	defer for i in out_buffer do delete(out_buffer[i])
+	defer for b in out_buffer do delete(b)
 	defer delete(out_buffer)
 
 	data_block_ints := make([]T, coder.field.n * coder.K)
@@ -151,21 +150,14 @@ write_data_block :: proc(
 				data_block_ints[i] ~= code_block_ints[j]
 			}
 		}
-		int_buffer: []u8 = make([]u8, coder.w)
-		switch coder.w {
-		case 1:
-			int_buffer = transmute([1]u8)data_block_ints[i]
-		case 2:
-			int_buffer = transmute([2]u8)data_block_ints[i]
-		case 4:
-			int_buffer = transmute([4]u8)data_block_ints[i]
-		case 8:
-			int_buffer = transmute([8]u8)data_block_ints[i]
-		}
-		append(&out_buffer[i], int_buffer)
+		buffer: [size_of(T)]u8
+		buffer = transmute([size_of(T)]u8)data_block_ints[i]
+		out_buffer[i] = buffer[:]
 	}
 	if done {
-		data_block_size = out_buffer[len(out_buffer) - 1][len(out_buffer[0]) - 1]
+		data_block_size = int(
+			out_buffer[len(out_buffer) - 1][len(out_buffer[0]) - 1],
+		)
 		assert(data_block_size < coder.data_block_size)
 	} else {
 		data_block_size = coder.data_block_size
@@ -173,10 +165,13 @@ write_data_block :: proc(
 	written_size := 0
 	for i in 0 ..< len(out_buffer) {
 		if (written_size + coder.w) <= data_block_size {
-			// write(out_fifo, out_buffer[i]) or_return
+			io.write(out_fifo, out_buffer[i]) or_return
 			written_size += coder.w
 		} else {
-			// write(out_fifo, out_buffer[i][:(data_block_size - written_size)])
+			io.write(
+				out_fifo,
+				out_buffer[i][:(data_block_size - written_size)],
+			) or_return
 			written_size = data_block_size
 			break
 		}
@@ -194,30 +189,25 @@ encode :: proc(
 	size: int,
 	err: Erasure_Error,
 ) {
+	assert(size_of(T) == coder.w)
 	assert(len(out_fifos) == coder.N)
 
 	encoder_bin := matrix_binary_rep(coder.encoder) or_return
 
 	done: bool
 	for !done {
-		data_block_ints, is_done := read_data_block(coder, T, in_fifo) or_return
+		data_block_ints, is_done := read_data_block(
+			coder,
+			T,
+			in_fifo,
+		) or_return
 		done = is_done
 		write_code_block(coder, T, encoder_bin, data_block_ints, out_fifos)
 		if !done {
 			size += coder.data_block_size
 		} else {
-			buffer := make([]u8, coder.w)
-			switch coder.w {
-			case 1:
-				buffer = transmute([1]u8)data_block_ints[len(data_block_ints) - 1]
-			case 2:
-				buffer = transmute([2]u8)data_block_ints[len(data_block_ints) - 1]
-			case 4:
-				buffer = transmute([4]u8)data_block_ints[len(data_block_ints) - 1]
-			case 8:
-				buffer = transmute([8]u8)data_block_ints[len(data_block_ints) - 1]
-			}
-			size += buffer[len(buffer) - 1]
+			buffer := transmute([size_of(T)]u8)data_block_ints[len(data_block_ints) - 1]
+			size += int(buffer[len(buffer) - 1])
 		}
 	}
 
@@ -234,6 +224,7 @@ decode :: proc(
 	size: int,
 	err: Erasure_Error,
 ) {
+	assert(size_of(T) == coder.w)
 	assert(len(excluded_shards) == (coder.N - coder.K))
 	assert(len(in_fifos) == coder.K)
 
@@ -243,12 +234,34 @@ decode :: proc(
 	defer matrix_deinit(inv)
 	decoder_bin := matrix_binary_rep(inv) or_return
 
+	peek_readers := make([]bufio.Lookahead_Reader, len(in_fifos))
+	defer delete(peek_readers)
+	peek_buf := make([][bufio.DEFAULT_BUF_SIZE]u8, len(in_fifos))
+	defer delete(peek_buf)
+
+	for s, i in in_fifos {
+		bufio.lookahead_reader_init(
+			&peek_readers[i],
+			in_fifos[i],
+			peek_buf[i][:],
+		)
+	}
 	done: bool
 	for !done {
-		code_block_ints, is_done := read_code_block(coder, T, in_fifos) or_return
+		code_block_ints, is_done := read_code_block(
+			coder,
+			T,
+			peek_readers,
+		) or_return
 		done = is_done
-		size += write_data_block(coder, T, decoder_bin, code_block_ints, out_fifo, done) or_return
+		size += write_data_block(
+			coder,
+			T,
+			decoder_bin,
+			code_block_ints,
+			out_fifo,
+			done,
+		) or_return
 	}
 	return size, nil
 }
-
