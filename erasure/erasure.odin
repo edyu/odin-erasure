@@ -4,10 +4,13 @@ import "core:fmt"
 import "core:io"
 import "core:log"
 import "core:math"
+import "core:math/rand"
 import "core:mem"
 import "core:os"
+import "core:slice"
 import "core:strconv"
 import "core:strings"
+import "core:time"
 
 Erasure_Error :: union {
 	Field_Error,
@@ -135,9 +138,23 @@ main :: proc() {
 
 	switch c in command.sub {
 	case Encode:
-		do_encode(command)
+		err := do_encode(command)
+		if err != nil {
+			fmt.eprintf("got error: %v\n", err)
+			#partial switch e in err {
+			case Unable_To_Open_File:
+				if e.filename != command.file do defer delete(e.filename)
+			}
+		}
 	case Decode:
-		do_decode(command)
+		err := do_decode(command)
+		if err != nil {
+			fmt.eprintf("got error: %v\n", err)
+			#partial switch e in err {
+			case Unable_To_Open_File:
+				if e.filename != command.file do defer delete(e.filename)
+			}
+		}
 	case:
 		fmt.println(usage)
 		os.exit(1)
@@ -251,22 +268,26 @@ do_encode :: proc(c: Command) -> (err: Erasure_Error) {
 		}
 	}
 	defer os.close(handle)
+	fmt.printf("opening input file %s\n", c.file)
 	input := os.stream_from_handle(handle)
 
 	output := make([]io.Writer, c.N)
-	for i in 0..<c.N {
+	defer delete(output)
+	for i in 0 ..< c.N {
 		errno: os.Errno
 		buf: [4]u8
-		parts := []string { c.code, strconv.itoa(buf[:], i) }
+		parts := []string{c.code, strconv.itoa(buf[:], i)}
 		filename := strings.concatenate(parts)
-		defer delete(filename)
-		handle, errno = os.open(filename, os.O_WRONLY)
+		fmt.printf("opening shard file %s\n", filename)
+		handle, errno = os.open(filename, os.O_WRONLY | os.O_CREATE)
 		if errno != os.ERROR_NONE {
 			return Unable_To_Open_File{filename = filename, errno = errno}
 		}
+		defer delete(filename)
 		output[i] = os.stream_from_handle(handle)
- 	}
+	}
 
+	fmt.println("initializing erasure coder")
 	coder := init_erasure_coder(c.N, c.K, c.w) or_return
 	switch coder.w {
 	case 1:
@@ -276,7 +297,9 @@ do_encode :: proc(c: Command) -> (err: Erasure_Error) {
 	case 4:
 		encode(coder, u32be, input, output)
 	case 8:
+		fmt.println("encoding...")
 		encode(coder, u64be, input, output)
+		fmt.println("encoded")
 	}
 	return nil
 }
@@ -289,7 +312,7 @@ do_decode :: proc(c: Command) -> (err: Erasure_Error) {
 	if c.file == "" do handle = os.stdout
 	else {
 		errno: os.Errno
-		handle, errno = os.open(c.file, os.O_WRONLY)
+		handle, errno = os.open(c.file, os.O_WRONLY | os.O_CREATE)
 		if errno != os.ERROR_NONE {
 			return Unable_To_Open_File{filename = c.file, errno = errno}
 		}
@@ -297,29 +320,54 @@ do_decode :: proc(c: Command) -> (err: Erasure_Error) {
 	defer os.close(handle)
 	output := os.stream_from_handle(handle)
 
-	input := make([]io.Reader, c.N)
-	for i in 0..<c.N {
+	excluded := sample(c.N, c.N - c.K)
+	defer delete(excluded)
+	fmt.printf("excluding shards: %v\n", excluded)
+	input := make([]io.Reader, c.K)
+	defer delete(input)
+	j: int
+	for i in 0 ..< c.N {
+		if slice.contains(excluded, i) do continue
 		errno: os.Errno
 		buf: [4]u8
-		parts := []string { c.code, strconv.itoa(buf[:], i) }
+		parts := []string{c.code, strconv.itoa(buf[:], i)}
 		filename := strings.concatenate(parts)
-		defer delete(filename)
 		handle, errno = os.open(filename)
 		if errno != os.ERROR_NONE {
 			return Unable_To_Open_File{filename = filename, errno = errno}
 		}
-		input[i] = os.stream_from_handle(handle)
- 	}
+		defer delete(filename)
+		input[j] = os.stream_from_handle(handle)
+		j += 1
+	}
 	coder := init_erasure_coder(c.N, c.K, c.w) or_return
 	switch coder.w {
 	case 1:
-		decode(coder, u8, {0, 1}, input, output)
+		decode(coder, u8, excluded, input, output)
 	case 2:
-		decode(coder, u16be, {1, 2}, input, output)
+		decode(coder, u16be, excluded, input, output)
 	case 4:
-		decode(coder, u32be, {3, 4}, input, output)
+		decode(coder, u32be, excluded, input, output)
 	case 8:
-		decode(coder, u64be, {2, 4}, input, output)
+		decode(coder, u64be, excluded, input, output)
 	}
 	return nil
+}
+
+sample :: proc(max: int, num: int) -> (values: []int) {
+	data := make([]int, max)
+	defer delete(data)
+	for i := 0; i < max; i += 1 {
+		data[i] = i
+	}
+	values = make([]int, num)
+	values[0] = rand.choice(data)
+	for i := 1; i < num; i += 1 {
+		for true {
+			values[i] = rand.choice(data)
+			if !slice.contains(values[0:i], values[i]) do break
+		}
+	}
+
+	return
 }
