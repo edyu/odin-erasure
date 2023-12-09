@@ -34,14 +34,14 @@ matrix_init :: proc(
 	m.num_rows = num_rows
 	m.num_cols = num_cols
 	m.elements = make([][]int, num_cols)
-	for c := 0; c < num_cols; c += 1 {
+	for c in 0..< num_cols {
 		m.elements[c] = make([]int, num_rows)
 	}
 	return m
 }
 
 matrix_deinit :: proc(m: Finite_Field_Matrix) {
-	for c := 0; c < m.num_cols; c += 1 {
+	for c in 0..< m.num_cols {
 		delete(m.elements[c])
 	}
 	delete(m.elements)
@@ -232,8 +232,7 @@ matrix_binary_rep :: proc(m: Finite_Field_Matrix) -> (x: Finite_Field_Matrix, er
 		for c := 0; c < m.num_cols; c += 1 {
 			a := matrix_get(m, r, c)
 			mat_a := field_matrix(m.field, a)
-			defer for i := 0; i < m.field.n; i += 1 do delete(mat_a[i])
-			defer delete(mat_a)
+			defer field_matrix_deinit(mat_a)
 			for i := 0; i < m.field.n; i += 1 {
 				for j := 0; j < m.field.n; j += 1 {
 					matrix_set(
@@ -601,10 +600,13 @@ test_matrix_binary_rep :: proc(t: ^testing.T) {
 
 	for a in 0..<m.field.order {
 		mat_a := field_matrix(m.field, a)
+		defer field_matrix_deinit(mat_a)
 		for b in 0..< m.field.order {
 			mat_b := field_matrix(m.field, b)
+			defer field_matrix_deinit(mat_b)
 			sum := field_add(m.field, a, b)
 			mat_sum := field_matrix(m.field, sum)
+			defer field_matrix_deinit(mat_sum)
 			for r in 0..< len(mat_a) {
 				for c in 0..< len(mat_a[0]) {
 					testing.expect(t, mat_sum[c][r] == field_add(m.field, mat_a[c][r], mat_b[c][r]), fmt.tprintf("expected [%d, %d]: %v, got %v", r, c, mat_sum, field_add(m.field, mat_a[c][r], mat_b[c][r])))

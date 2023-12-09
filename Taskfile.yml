@@ -28,13 +28,13 @@ tasks:
 
   test:
     cmds:
-      - odin test erasure -out=bin/erasure
+      - odin test erasure -out=bin/erasure-test
     aliases:
       - t
     silent: true
     sources:
       - './erasure/**/*.odin'
     generates:
-      - bin/erasure
+      - bin/erasure-test
 
 interval: 250ms

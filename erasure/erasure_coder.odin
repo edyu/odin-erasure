@@ -22,12 +22,7 @@ Erasure_Coder :: struct {
 	code_block_size: int,
 }
 
-init_erasure_coder :: proc(
-	N, K, w: int,
-) -> (
-	coder: Erasure_Coder,
-	err: Field_Error,
-) {
+erasure_coder_init :: proc(N, K, w: int) -> (coder: Erasure_Coder, err: Field_Error) {
 	coder.N = N
 	coder.K = K
 	assert(slice.contains([]int{1, 2, 4, 8}, w))
@@ -40,6 +35,10 @@ init_erasure_coder :: proc(
 	coder.data_block_size = coder.chunk_size * K
 	coder.code_block_size = coder.chunk_size * N
 	return coder, nil
+}
+
+erasure_coder_deinit :: proc(coder: Erasure_Coder) {
+	matrix_deinit(coder.encoder)
 }
 
 read_data_block :: proc(
@@ -82,11 +81,10 @@ read_code_block :: proc(
 
 	block_ints = make([]T, coder.field.n * coder.K)
 
+	fmt.println("reading")
 	for i in 0 ..< len(block_ints) {
-		read_size := io.read(
-			in_fifos[math.floor_div(i, coder.field.n)].r,
-			buffer[:],
-		) or_return
+		read_size := io.read(in_fifos[math.floor_div(i, coder.field.n)].r, buffer[:]) or_return
+		fmt.printf("read[%d]=%d\n", i, read_size)
 		assert(read_size == len(buffer))
 		block_ints[i] = transmute(T)buffer
 	}
@@ -95,6 +93,7 @@ read_code_block :: proc(
 		&in_fifos[math.floor_div(len(block_ints) - 1, coder.field.n)],
 		1,
 	) or_return
+	fmt.printf("len(peek)=%d\n", len(peek))
 	return block_ints, len(peek) == 0, nil
 }
 
@@ -118,10 +117,7 @@ write_code_block :: proc(
 		}
 		buffer: [size_of(T)]u8
 		buffer = transmute([size_of(T)]u8)code_block_ints[i]
-		io.write(
-			out_fifos[math.floor_div(i, coder.field.n)],
-			buffer[:],
-		) or_return
+		io.write(out_fifos[math.floor_div(i, coder.field.n)], buffer[:]) or_return
 	}
 	return nil
 }
@@ -155,9 +151,7 @@ write_data_block :: proc(
 		out_buffer[i] = buffer[:]
 	}
 	if done {
-		data_block_size = int(
-			out_buffer[len(out_buffer) - 1][len(out_buffer[0]) - 1],
-		)
+		data_block_size = int(out_buffer[len(out_buffer) - 1][len(out_buffer[0]) - 1])
 		assert(data_block_size < coder.data_block_size)
 	} else {
 		data_block_size = coder.data_block_size
@@ -168,10 +162,7 @@ write_data_block :: proc(
 			io.write(out_fifo, out_buffer[i]) or_return
 			written_size += coder.w
 		} else {
-			io.write(
-				out_fifo,
-				out_buffer[i][:(data_block_size - written_size)],
-			) or_return
+			io.write(out_fifo, out_buffer[i][:(data_block_size - written_size)]) or_return
 			written_size = data_block_size
 			break
 		}
@@ -193,14 +184,13 @@ encode :: proc(
 	assert(len(out_fifos) == coder.N)
 
 	encoder_bin := matrix_binary_rep(coder.encoder) or_return
+	defer matrix_deinit(encoder_bin)
 
 	done: bool
 	for !done {
-		data_block_ints, is_done := read_data_block(
-			coder,
-			T,
-			in_fifo,
-		) or_return
+		data_block_ints, is_done := read_data_block(coder, T, in_fifo) or_return
+		defer delete(data_block_ints)
+
 		done = is_done
 		write_code_block(coder, T, encoder_bin, data_block_ints, out_fifos)
 		if !done {
@@ -233,6 +223,7 @@ decode :: proc(
 	inv := matrix_invert(sub) or_return
 	defer matrix_deinit(inv)
 	decoder_bin := matrix_binary_rep(inv) or_return
+	defer matrix_deinit(decoder_bin)
 
 	peek_readers := make([]bufio.Lookahead_Reader, len(in_fifos))
 	defer delete(peek_readers)
@@ -240,28 +231,14 @@ decode :: proc(
 	defer delete(peek_buf)
 
 	for s, i in in_fifos {
-		bufio.lookahead_reader_init(
-			&peek_readers[i],
-			in_fifos[i],
-			peek_buf[i][:],
-		)
+		bufio.lookahead_reader_init(&peek_readers[i], in_fifos[i], peek_buf[i][:])
 	}
 	done: bool
 	for !done {
-		code_block_ints, is_done := read_code_block(
-			coder,
-			T,
-			peek_readers,
-		) or_return
+		code_block_ints, is_done := read_code_block(coder, T, peek_readers) or_return
 		done = is_done
-		size += write_data_block(
-			coder,
-			T,
-			decoder_bin,
-			code_block_ints,
-			out_fifo,
-			done,
-		) or_return
+		size += write_data_block(coder, T, decoder_bin, code_block_ints, out_fifo, done) or_return
 	}
 	return size, nil
 }
+

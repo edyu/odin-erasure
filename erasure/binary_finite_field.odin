@@ -181,6 +181,13 @@ field_matrix :: proc(bff: Binary_Finite_Field, a: int) -> (result: [dynamic][dyn
 	return result
 }
 
+field_matrix_deinit :: proc(m: [dynamic][dynamic]int) {
+	for c in m {
+		defer delete(c)
+	}
+	delete(m)
+}
+
 @(test)
 test_field_matrix :: proc(t: ^testing.T) {
 	fields: [dynamic]Binary_Finite_Field

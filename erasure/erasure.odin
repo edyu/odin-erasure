@@ -85,19 +85,13 @@ main :: proc() {
 
 	defer {
 		if len(track.allocation_map) > 0 {
-			fmt.eprintf(
-				"=== %v allocations not freed: ===\n",
-				len(track.allocation_map),
-			)
+			fmt.eprintf("=== %v allocations not freed: ===\n", len(track.allocation_map))
 			for _, entry in track.allocation_map {
 				fmt.eprintf("- %v bytes @ %v\n", entry.size, entry.location)
 			}
 		}
 		if len(track.bad_free_array) > 0 {
-			fmt.eprintf(
-				"=== %v incorrect frees: ===\n",
-				len(track.bad_free_array),
-			)
+			fmt.eprintf("=== %v incorrect frees: ===\n", len(track.bad_free_array))
 			for entry in track.bad_free_array {
 				fmt.eprintf("- %p @ %v\n", entry.memory, entry.location)
 			}
@@ -124,7 +118,7 @@ main :: proc() {
 	arguments := os.args[1:]
 	fmt.println("args =", arguments)
 
-	if len(arguments) < 5 {
+	if len(arguments) < 2 {
 		fmt.println(usage)
 		os.exit(1)
 	}
@@ -133,6 +127,7 @@ main :: proc() {
 
 	if cli_error != nil {
 		fmt.eprintln("Failed to parse arguments:", cli_error)
+		fmt.println(usage)
 		os.exit(1)
 	}
 
@@ -161,23 +156,13 @@ main :: proc() {
 	}
 }
 
-parse_int_argument :: proc(
-	arg: string,
-) -> (
-	value: int,
-	error: Argument_Parse_Error,
-) {
+parse_int_argument :: proc(arg: string) -> (value: int, error: Argument_Parse_Error) {
 	v := strconv.atoi(arg)
 	if v > 0 do return v, nil
 	return 0, Wrong_Argument{field = arg}
 }
 
-parse_arguments :: proc(
-	arguments: []string,
-) -> (
-	command: Command,
-	error: Argument_Parse_Error,
-) {
+parse_arguments :: proc(arguments: []string) -> (command: Command, error: Argument_Parse_Error) {
 	command.N = 5
 	command.K = 3
 	command.w = 8
@@ -192,6 +177,9 @@ parse_arguments :: proc(
 	}
 
 	args := arguments[1:]
+
+	extra: [dynamic]string
+	defer delete(extra)
 
 	for i := 0; i < len(args); i += 1 {
 		switch args[i] {
@@ -237,7 +225,11 @@ parse_arguments :: proc(
 				return command, Missing_Argument{field = "code"}
 			}
 		case:
-			return command, Illegal_Argument{reason = args[i]}
+			if args[i][0] == '-' {
+				return command, Illegal_Argument{reason = args[i]}
+			} else {
+				append(&extra, args[i])
+			}
 		}
 	}
 
@@ -245,11 +237,11 @@ parse_arguments :: proc(
 		return command, Illegal_Argument{reason = "1 <= K <= N"}
 	}
 
-	// if command.file == "" {
-	// 	return command, Missing_Argument{field = "file"}
-	// }
-	if command.code == "" {
-		return command, Missing_Argument{field = "code"}
+	if command.code == "" && command.file == "" {
+		if len(extra) > 0 do command.file = extra[0]
+		else do return command, Missing_Argument{field = "code"}
+	} else if len(extra) > 0 {
+		command.file = extra[0]
 	}
 
 	return command, nil
@@ -276,10 +268,12 @@ do_encode :: proc(c: Command) -> (err: Erasure_Error) {
 	for i in 0 ..< c.N {
 		errno: os.Errno
 		buf: [4]u8
-		parts := []string{c.code, strconv.itoa(buf[:], i)}
+		shard := c.code
+		if shard == "" do shard = c.file
+		parts := []string{shard, "_shard_", strconv.itoa(buf[:], i)}
 		filename := strings.concatenate(parts)
 		fmt.printf("opening shard file %s\n", filename)
-		handle, errno = os.open(filename, os.O_WRONLY | os.O_CREATE)
+		handle, errno = os.open(filename, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0o644)
 		if errno != os.ERROR_NONE {
 			return Unable_To_Open_File{filename = filename, errno = errno}
 		}
@@ -288,7 +282,8 @@ do_encode :: proc(c: Command) -> (err: Erasure_Error) {
 	}
 
 	fmt.println("initializing erasure coder")
-	coder := init_erasure_coder(c.N, c.K, c.w) or_return
+	coder := erasure_coder_init(c.N, c.K, c.w) or_return
+	defer erasure_coder_deinit(coder)
 	switch coder.w {
 	case 1:
 		encode(coder, u8, input, output)
@@ -312,7 +307,7 @@ do_decode :: proc(c: Command) -> (err: Erasure_Error) {
 	if c.file == "" do handle = os.stdout
 	else {
 		errno: os.Errno
-		handle, errno = os.open(c.file, os.O_WRONLY | os.O_CREATE)
+		handle, errno = os.open(c.file, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0o644)
 		if errno != os.ERROR_NONE {
 			return Unable_To_Open_File{filename = c.file, errno = errno}
 		}
@@ -330,8 +325,11 @@ do_decode :: proc(c: Command) -> (err: Erasure_Error) {
 		if slice.contains(excluded, i) do continue
 		errno: os.Errno
 		buf: [4]u8
-		parts := []string{c.code, strconv.itoa(buf[:], i)}
+		shard := c.code
+		if shard == "" do shard = c.file
+		parts := []string{shard, "_shard_", strconv.itoa(buf[:], i)}
 		filename := strings.concatenate(parts)
+		fmt.printf("opening shard file %s\n", filename)
 		handle, errno = os.open(filename)
 		if errno != os.ERROR_NONE {
 			return Unable_To_Open_File{filename = filename, errno = errno}
@@ -340,7 +338,9 @@ do_decode :: proc(c: Command) -> (err: Erasure_Error) {
 		input[j] = os.stream_from_handle(handle)
 		j += 1
 	}
-	coder := init_erasure_coder(c.N, c.K, c.w) or_return
+	fmt.println("initializing erasure coder")
+	coder := erasure_coder_init(c.N, c.K, c.w) or_return
+	defer erasure_coder_deinit(coder)
 	switch coder.w {
 	case 1:
 		decode(coder, u8, excluded, input, output)
@@ -349,7 +349,9 @@ do_decode :: proc(c: Command) -> (err: Erasure_Error) {
 	case 4:
 		decode(coder, u32be, excluded, input, output)
 	case 8:
+		fmt.println("decoding...")
 		decode(coder, u64be, excluded, input, output)
+		fmt.println("decoded")
 	}
 	return nil
 }
@@ -371,3 +373,4 @@ sample :: proc(max: int, num: int) -> (values: []int) {
 
 	return
 }
+
