@@ -251,18 +251,32 @@ do_encode :: proc(c: Command) -> (err: Erasure_Error) {
 		}
 	}
 	defer os.close(handle)
-
 	input := os.stream_from_handle(handle)
+
+	output := make([]io.Writer, c.N)
+	for i in 0..<c.N {
+		errno: os.Errno
+		buf: [4]u8
+		parts := []string { c.code, strconv.itoa(buf[:], i) }
+		filename := strings.concatenate(parts)
+		defer delete(filename)
+		handle, errno = os.open(filename, os.O_WRONLY)
+		if errno != os.ERROR_NONE {
+			return Unable_To_Open_File{filename = filename, errno = errno}
+		}
+		output[i] = os.stream_from_handle(handle)
+ 	}
+
 	coder := init_erasure_coder(c.N, c.K, c.w) or_return
 	switch coder.w {
 	case 1:
-		encode(coder, u8, input, nil)
+		encode(coder, u8, input, output)
 	case 2:
-		encode(coder, u16be, input, nil)
+		encode(coder, u16be, input, output)
 	case 4:
-		encode(coder, u32be, input, nil)
+		encode(coder, u32be, input, output)
 	case 8:
-		encode(coder, u64be, input, nil)
+		encode(coder, u64be, input, output)
 	}
 	return nil
 }
@@ -281,18 +295,31 @@ do_decode :: proc(c: Command) -> (err: Erasure_Error) {
 		}
 	}
 	defer os.close(handle)
-
 	output := os.stream_from_handle(handle)
+
+	input := make([]io.Reader, c.N)
+	for i in 0..<c.N {
+		errno: os.Errno
+		buf: [4]u8
+		parts := []string { c.code, strconv.itoa(buf[:], i) }
+		filename := strings.concatenate(parts)
+		defer delete(filename)
+		handle, errno = os.open(filename)
+		if errno != os.ERROR_NONE {
+			return Unable_To_Open_File{filename = filename, errno = errno}
+		}
+		input[i] = os.stream_from_handle(handle)
+ 	}
 	coder := init_erasure_coder(c.N, c.K, c.w) or_return
 	switch coder.w {
 	case 1:
-		decode(coder, u8, {0, 1}, nil, output)
+		decode(coder, u8, {0, 1}, input, output)
 	case 2:
-		decode(coder, u16be, {1, 2}, nil, output)
+		decode(coder, u16be, {1, 2}, input, output)
 	case 4:
-		decode(coder, u32be, {3, 4}, nil, output)
+		decode(coder, u32be, {3, 4}, input, output)
 	case 8:
-		decode(coder, u64be, {2, 4}, nil, output)
+		decode(coder, u64be, {2, 4}, input, output)
 	}
 	return nil
 }
