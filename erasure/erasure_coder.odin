@@ -81,7 +81,7 @@ read_data_block :: proc(
 read_code_block :: proc(
 	coder: Erasure_Coder,
 	$T: typeid,
-	inputs: []bufio.Lookahead_Reader,
+	inputs: []bufio.Reader,
 ) -> (
 	code_block: []T,
 	done: bool,
@@ -93,18 +93,26 @@ read_code_block :: proc(
 
 	fmt.println("reading")
 	for i in 0 ..< len(code_block) {
-		read_size := io.read(inputs[math.floor_div(i, coder.field.n)].r, buffer[:]) or_return
+		read_size := bufio.reader_read(
+			&inputs[math.floor_div(i, coder.field.n)],
+			buffer[:],
+		) or_return
 		fmt.printf("read[%d]=%d\n", i, read_size)
 		assert(read_size == len(buffer))
 		code_block[i] = transmute(T)buffer
 	}
 
-	peek := bufio.lookahead_reader_peek(
-		&inputs[math.floor_div(len(code_block) - 1, coder.field.n)],
-		1,
-	) or_return
-	fmt.printf("len(peek)=%d\n", len(peek))
-	return code_block, len(peek) == 0, nil
+	fmt.println("peeking")
+	p := math.floor_div(len(code_block) - 1, coder.field.n)
+	// peek_reader: bufio.Lookahead_Reader
+	peek_buffer: [1]u8
+	// bufio.lookahead_reader_init(&peek_reader, inputs[p], peek_buffer[:])
+	// peek := bufio.lookahead_reader_peek(&peek_reader, 1) or_return
+	_, io_err := bufio.reader_peek(&inputs[p], 1)
+	if io_err == io.Error.No_Progress {
+		done = true
+	}
+	return code_block, done, nil
 }
 
 write_code_block :: proc(
@@ -143,7 +151,7 @@ write_data_block :: proc(
 	err: Erasure_Error,
 ) {
 	out_buffer := make([][]u8, coder.field.n * coder.K)
-	defer for b in out_buffer do delete(b)
+	// defer for b in out_buffer do delete(b)
 	defer delete(out_buffer)
 
 	data_block := make([]T, coder.field.n * coder.K)
@@ -234,17 +242,22 @@ decode :: proc(
 	decoder_bin := matrix_to_binary(inv) or_return
 	defer matrix_deinit(decoder_bin)
 
-	peek_readers := make([]bufio.Lookahead_Reader, len(inputs))
+	peek_readers := make([]bufio.Reader, len(inputs))
 	defer delete(peek_readers)
-	peek_buf := make([][bufio.DEFAULT_BUF_SIZE]u8, len(inputs))
-	defer delete(peek_buf)
+	// peek_readers := make([]bufio.Lookahead_Reader, len(inputs))
+	// defer delete(peek_readers)
+	// peek_buf := make([][bufio.DEFAULT_BUF_SIZE]u8, len(inputs))
+	// defer delete(peek_buf)
 
 	for s, i in inputs {
-		bufio.lookahead_reader_init(&peek_readers[i], inputs[i], peek_buf[i][:])
+		bufio.reader_init(&peek_readers[i], inputs[i])
 	}
+	defer for &r in peek_readers do bufio.reader_destroy(&r)
 	done: bool
 	for !done {
+		// code_block, is_done := read_code_block(coder, T, peek_readers) or_return
 		code_block, is_done := read_code_block(coder, T, peek_readers) or_return
+		defer delete(code_block)
 		done = is_done
 		size += write_data_block(coder, T, decoder_bin, code_block, output, done) or_return
 	}
