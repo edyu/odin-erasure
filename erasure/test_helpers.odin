@@ -9,7 +9,6 @@ import "core:strconv"
 import "core:strings"
 import "core:testing"
 
-
 num_chosen :: proc(m: int, n: int) -> int {
 	return math.factorial(m) / (math.factorial(n) * math.factorial(m - n))
 }
@@ -50,13 +49,20 @@ test_choose :: proc(t: ^testing.T) {
 	testing.expect(
 		t,
 		len(c) == num_chosen(5, 2),
-		fmt.tprintf("expected: (5 choose 2)=%v, got %v", len(c), num_chosen(5, 2)),
+		fmt.tprintf(
+			"expected: (5 choose 2)=%v, got %v",
+			len(c),
+			num_chosen(5, 2),
+		),
 	)
 	c2 := choose([]int{0, 1, 2, 3, 4, 5}, 3)
 	testing.expect(
 		t,
 		len(c2) == num_chosen(6, 3),
-		fmt.tprintf("expected: (6 choose 3)=%v, got %v", len(c2), num_chosen(6, 3)),
+		fmt.tprintf(
+			"expected: (6 choose 3)=%v, got %v",
+			len(c2),
+			num_chosen(6, 3),
+		),
 	)
 }
-
