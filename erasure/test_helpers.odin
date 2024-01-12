@@ -27,6 +27,9 @@ choose :: proc(l: []int, k: int) -> (ret: [dynamic][dynamic]int) {
 	}
 
 	c := choose(l[1:], k - 1)
+	defer delete(c)
+	defer for s in c do delete(s)
+
 	for m in 0 ..< (len(l) - 1) {
 		for n in 0 ..< len(c) {
 			if (l[m] >= c[n][0]) do continue

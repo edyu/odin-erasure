@@ -33,7 +33,7 @@ erasure_coder_init :: proc(N, K, w: int) -> (coder: Erasure_Coder, err: Field_Er
 	coder.field = field_init(field_n) or_return
 	coder.encoder = matrix_init_cauchy(N, K, coder.field) or_return
 	coder.chunk_size = coder.w * field_n
-	log.debugf("chunk.size=%d\n", chuck_size)
+	log.debugf("chunk.size=%d\n", coder.chunk_size)
 	coder.data_block_size = coder.chunk_size * K
 	log.debugf("block.data.size=%d\n", coder.data_block_size)
 	coder.code_block_size = coder.chunk_size * N
@@ -192,7 +192,7 @@ encode :: proc(
 	assert(size_of(T) == coder.w)
 	assert(len(outputs) == coder.N)
 
-	encoder_bin := matrix_binary_rep(coder.encoder) or_return
+	encoder_bin := matrix_to_binary(coder.encoder) or_return
 	defer matrix_deinit(encoder_bin)
 
 	done: bool
@@ -231,7 +231,7 @@ decode :: proc(
 	defer matrix_deinit(sub)
 	inv := matrix_invert(sub) or_return
 	defer matrix_deinit(inv)
-	decoder_bin := matrix_binary_rep(inv) or_return
+	decoder_bin := matrix_to_binary(inv) or_return
 	defer matrix_deinit(decoder_bin)
 
 	peek_readers := make([]bufio.Lookahead_Reader, len(inputs))

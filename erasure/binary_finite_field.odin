@@ -28,54 +28,54 @@ Binary_Finite_Field :: struct {
 	divisor: int,
 }
 
-field_init :: proc(n: int) -> (bff: Binary_Finite_Field, err: Field_Error) {
+field_init :: proc(n: int) -> (field: Binary_Finite_Field, err: Field_Error) {
 	switch n {
 	case 1:
-		bff.divisor = 3
+		field.divisor = 3
 	case 2:
-		bff.divisor = 7
+		field.divisor = 7
 	case 3:
-		bff.divisor = 11
+		field.divisor = 11
 	case 4:
-		bff.divisor = 19
+		field.divisor = 19
 	case 5:
-		bff.divisor = 37
+		field.divisor = 37
 	case 6:
-		bff.divisor = 67
+		field.divisor = 67
 	case 7:
-		bff.divisor = 131
+		field.divisor = 131
 	case:
-		return bff, Value_Error{reason = "n must be in [1, 7)"}
+		return field, Value_Error{reason = "n must be in [1, 7)"}
 	}
-	bff.n = n
-	bff.order = 1 << uint(n)
+	field.n = n
+	field.order = 1 << uint(n)
 
-	return bff, nil
+	return field, nil
 }
 
-field_validate :: proc(bff: Binary_Finite_Field, a: int) -> int {
-	assert(a >= 0 && a < bff.order)
+field_validate :: proc(field: Binary_Finite_Field, a: int) -> int {
+	assert(a >= 0 && a < field.order)
 	return a
 }
 
-field_add :: proc(bff: Binary_Finite_Field, a, b: int) -> int {
-	return field_validate(bff, a) ~ field_validate(bff, b)
+field_add :: proc(field: Binary_Finite_Field, a, b: int) -> int {
+	return field_validate(field, a) ~ field_validate(field, b)
 }
 
-field_negate :: proc(bff: Binary_Finite_Field, a: int) -> int {
-	return field_validate(bff, a)
+field_negate :: proc(field: Binary_Finite_Field, a: int) -> int {
+	return field_validate(field, a)
 }
 
-field_subtract :: proc(bff: Binary_Finite_Field, a, b: int) -> int {
-	return field_add(bff, a, field_negate(bff, b))
+field_subtract :: proc(field: Binary_Finite_Field, a, b: int) -> int {
+	return field_add(field, a, field_negate(field, b))
 }
 
-field_multiply :: proc(bff: Binary_Finite_Field, a, b: int) -> int {
-	if bff.n == 1 do return field_validate(bff, field_validate(bff, a) * field_validate(bff, b))
+field_multiply :: proc(field: Binary_Finite_Field, a, b: int) -> int {
+	if field.n == 1 do return field_validate(field, field_validate(field, a) * field_validate(field, b))
 
-	field_validate(bff, a)
+	field_validate(field, a)
 	result := 0
-	field_validate(bff, b)
+	field_validate(field, b)
 	sb: strings.Builder
 	defer delete(sb.buf)
 	bin_b := fmt.sbprintf(&sb, "%b", b)
@@ -87,101 +87,102 @@ field_multiply :: proc(bff: Binary_Finite_Field, a, b: int) -> int {
 		shift -= 1
 	}
 	strings.builder_reset(&sb)
-	div_len: uint = len(fmt.sbprintf(&sb, "%b", bff.divisor))
-	for result >= bff.order {
+	div_len: uint = len(fmt.sbprintf(&sb, "%b", field.divisor))
+	for result >= field.order {
 		strings.builder_reset(&sb)
 		res_len: uint = len(fmt.sbprintf(&sb, "%b", result))
 		shift = res_len - div_len
-		result ~= bff.divisor << shift
+		result ~= field.divisor << shift
 	}
-	return field_validate(bff, result)
+	return field_validate(field, result)
 }
 
-field_invert :: proc(bff: Binary_Finite_Field, a: int) -> (value: int, err: Field_Error) {
+field_invert :: proc(field: Binary_Finite_Field, a: int) -> (value: int, err: Field_Error) {
 	if a == 0 do return a, No_Inverse{number = a}
 
-	for b := 0; b < bff.order; b += 1 {
-		if field_multiply(bff, a, b) == 1 do return b, nil
+	for b := 0; b < field.order; b += 1 {
+		if field_multiply(field, a, b) == 1 do return b, nil
 	}
 
 	return a, No_Inverse{number = a}
 }
 
-field_divide :: proc(bff: Binary_Finite_Field, a, b: int) -> (value: int, err: Field_Error) {
-	field_validate(bff, a)
-	inverse := field_invert(bff, b) or_return
-	return field_multiply(bff, a, inverse), nil
+field_divide :: proc(field: Binary_Finite_Field, a, b: int) -> (value: int, err: Field_Error) {
+	field_validate(field, a)
+	inverse := field_invert(field, b) or_return
+	return field_multiply(field, a, inverse), nil
 }
 
-field_matrix4 :: proc(bff: Binary_Finite_Field, a: int) -> (result: matrix[4, 4]int) {
-	assert(bff.n == 4)
+field_matrix4 :: proc(field: Binary_Finite_Field, a: int) -> (result: matrix[4, 4]int) {
+	assert(field.n == 4)
 	basis := 1
-	for c := 0; c < bff.n; c += 1 {
-		p := field_multiply(bff, a, basis)
+	for c := 0; c < field.n; c += 1 {
+		p := field_multiply(field, a, basis)
 		basis <<= 1
-		for r := 0; r < bff.n; r += 1 {
-			result[r, c] = p
+		for r := 0; r < field.n; r += 1 {
+			result[r, c] = (p >> uint(r)) & 1
 		}
 	}
 	return result
 }
 
-field_matrix3 :: proc(bff: Binary_Finite_Field, a: int) -> (result: matrix[3, 3]int) {
-	assert(bff.n == 3)
+field_matrix3 :: proc(field: Binary_Finite_Field, a: int) -> (result: matrix[3, 3]int) {
+	assert(field.n == 3)
 	basis := 1
-	for c := 0; c < bff.n; c += 1 {
-		p := field_multiply(bff, a, basis)
+	for c := 0; c < field.n; c += 1 {
+		p := field_multiply(field, a, basis)
 		basis <<= 1
-		for r := 0; r < bff.n; r += 1 {
-			result[r, c] = p
+		for r := 0; r < field.n; r += 1 {
+			result[r, c] = (p >> uint(r)) & 1
 		}
 	}
 	return result
 }
 
-field_matrix2 :: proc(bff: Binary_Finite_Field, a: int) -> (result: matrix[2, 2]int) {
-	assert(bff.n == 2)
+field_matrix2 :: proc(field: Binary_Finite_Field, a: int) -> (result: matrix[2, 2]int) {
+	assert(field.n == 2)
 	basis := 1
-	for c := 0; c < bff.n; c += 1 {
-		p := field_multiply(bff, a, basis)
+	for c := 0; c < field.n; c += 1 {
+		p := field_multiply(field, a, basis)
 		basis <<= 1
-		for r := 0; r < bff.n; r += 1 {
-			result[r, c] = p
+		for r := 0; r < field.n; r += 1 {
+			result[r, c] = (p >> uint(r)) & 1
 		}
 	}
 	return result
 }
 
-field_matrix_n :: proc($N: int, bff: Binary_Finite_Field, a: int) -> (result: [N][N]int) {
-	assert(bff.n == N)
+field_matrix_n :: proc($N: int, field: Binary_Finite_Field, a: int) -> (result: [N][N]int) {
+	assert(field.n == N)
 	basis := 1
-	for c := 0; c < bff.n; c += 1 {
-		p := field_multiply(bff, a, basis)
+	for c := 0; c < field.n; c += 1 {
+		p := field_multiply(field, a, basis)
 		basis <<= 1
-		for r := 0; r < bff.n; r += 1 {
-			result[c][r] = p
+		for r := 0; r < field.n; r += 1 {
+			result[c][r] = (p >> uint(r)) & 1
 		}
 	}
 	return result
 }
 
-// note that the return matrix is [col][row]int
-// so for matrix[r, c], you need to do matrix[c][r]
-field_matrix :: proc(bff: Binary_Finite_Field, a: int) -> (result: [dynamic][dynamic]int) {
+field_matrix :: proc(field: Binary_Finite_Field, a: int) -> (result: [][]int) {
+	field_validate(field, a)
+	result = make([][]int, field.n)
+	for r := 0; r < field.n; r += 1 {
+		result[r] = make([]int, field.n)
+	}
 	basis := 1
-	for c := 0; c < bff.n; c += 1 {
-		p := field_multiply(bff, a, basis)
+	for c := 0; c < field.n; c += 1 {
+		p := field_multiply(field, a, basis)
 		basis <<= 1
-		col: [dynamic]int
-		for r := 0; r < bff.n; r += 1 {
-			append(&col, p)
+		for r := 0; r < field.n; r += 1 {
+			result[r][c] = (p >> uint(r)) & 1
 		}
-		append(&result, col)
 	}
 	return result
 }
 
-field_matrix_deinit :: proc(m: [dynamic][dynamic]int) {
+field_matrix_deinit :: proc(m: [][]int) {
 	for c in m {
 		defer delete(c)
 	}
@@ -193,25 +194,33 @@ test_field_matrix :: proc(t: ^testing.T) {
 	fields: [dynamic]Binary_Finite_Field
 	defer delete(fields)
 	for i := 1; i <= 7; i += 1 {
-		bff, err := field_init(i)
+		field, err := field_init(i)
 		if err != nil {
 			fmt.eprintf("cannot initialize binary finite field for %d: %v\n", i, err)
 			return
 		}
-		append(&fields, bff)
+		append(&fields, field)
 	}
 
 	for i := 1; i <= 7; i += 1 {
 		if i == 3 {
-			mm := field_matrix3(fields[2], 3)
-			ms := field_matrix_n(3, fields[2], 3)
-			md := field_matrix(fields[2], 3)
+			mm := field_matrix3(fields[2], 6)
+			ms := field_matrix_n(3, fields[2], 6)
+			md := field_matrix(fields[2], 6)
+			testing.expect(t, md[0][0] == 0)
+			testing.expect(t, md[0][1] == 1)
+			testing.expect(t, md[0][2] == 1)
+			testing.expect(t, md[1][0] == 1)
+			testing.expect(t, md[1][1] == 1)
+			testing.expect(t, md[1][2] == 0)
+			testing.expect(t, md[2][0] == 1)
+			testing.expect(t, md[2][1] == 1)
+			testing.expect(t, md[2][2] == 1)
 			for r := 0; r < i; r += 1 {
 				for c := 0; c < i; c += 1 {
 					testing.expect(t, mm[r, c] == ms[c][r])
-					testing.expect(t, mm[r, c] == md[c][r])
+					testing.expect(t, mm[r, c] == md[r][c])
 				}
-
 			}
 		}
 		if i == 4 {
@@ -221,7 +230,7 @@ test_field_matrix :: proc(t: ^testing.T) {
 			for r := 0; r < i; r += 1 {
 				for c := 0; c < i; c += 1 {
 					testing.expect(t, mm[r, c] == ms[c][r])
-					testing.expect(t, mm[r, c] == md[c][r])
+					testing.expect(t, mm[r, c] == md[r][c])
 				}
 			}
 		}
@@ -230,14 +239,14 @@ test_field_matrix :: proc(t: ^testing.T) {
 			md := field_matrix(fields[i - 1], i)
 			for r := 0; r < i; r += 1 {
 				for c := 0; c < i; c += 1 {
-					testing.expect(t, ms[c][r] == md[c][r])
+					testing.expect(t, ms[c][r] == md[r][c])
 				}
 			}
 		}
-		if i > 5 {
-			md := field_matrix(fields[i - 1], i)
-			fmt.printf("matrix: %v\n", md)
-		}
+		// if i > 5 {
+		// 	md := field_matrix(fields[i - 1], i)
+		// 	// fmt.printf("matrix: %v\n", md)
+		// }
 	}
 
 }

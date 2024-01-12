@@ -64,18 +64,13 @@ matrix_set :: proc(m: Finite_Field_Matrix, r, c: int, v: int) {
 }
 
 matrix_display :: proc(m: Finite_Field_Matrix) {
-	fmt.print("matrix[")
+	fmt.printf("%dx%d row ->\n", m.num_rows, m.num_cols)
 	for r := 0; r < m.num_rows; r += 1 {
 		for c := 0; c < m.num_cols; c += 1 {
-			fmt.print(matrix_get(m, r, c))
-			if c < m.num_cols - 1 {
-				fmt.print(", ")
-			} else if r < m.num_rows - 1 {
-				fmt.print("; ")
-			}
+			fmt.printf("%d ", matrix_get(m, r, c))
 		}
+		fmt.println("")
 	}
-	fmt.println("]")
 }
 
 matrix_set_cauchy :: proc(m: Finite_Field_Matrix) -> Field_Error {
@@ -225,7 +220,7 @@ matrix_multiply :: proc(
 	return m
 }
 
-matrix_binary_rep :: proc(m: Finite_Field_Matrix) -> (x: Finite_Field_Matrix, err: Field_Error) {
+matrix_to_binary :: proc(m: Finite_Field_Matrix) -> (x: Finite_Field_Matrix, err: Field_Error) {
 	field := field_init(1) or_return
 	x = matrix_init(m.num_rows * m.field.n, m.num_cols * m.field.n, field)
 	for r := 0; r < m.num_rows; r += 1 {
@@ -239,7 +234,7 @@ matrix_binary_rep :: proc(m: Finite_Field_Matrix) -> (x: Finite_Field_Matrix, er
 						x,
 						r * m.field.n + i,
 						c * m.field.n + j,
-						field_validate(m.field, mat_a[j][i]),
+						field_validate(m.field, mat_a[i][j]),
 					)
 				}
 			}
@@ -588,12 +583,53 @@ test_matrix_invertible_submatrices :: proc(t: ^testing.T) {
 				}
 			}
 		}
-
+		submatrix_bin, _ := matrix_to_binary(submatrix)
+		defer matrix_deinit(submatrix_bin)
+		testing.expect(t, submatrix.num_rows * submatrix.field.n == submatrix_bin.num_rows, fmt.tprintf("expected same rows, got %d * %d != %d\n", submatrix.num_rows, submatrix.field.n, submatrix_bin.num_rows))
+		testing.expect(t, submatrix.num_cols * submatrix.field.n == submatrix_bin.num_cols, fmt.tprintf("expected same cols, got %d * %d != %d\n", submatrix.num_cols, submatrix.field.n, submatrix_bin.num_cols))
+		inverse_bin, _ := matrix_to_binary(inverse)
+		defer matrix_deinit(inverse_bin)
+		product1_bin := matrix_multiply(inverse_bin, submatrix_bin)
+		defer matrix_deinit(product1_bin)
+		product2_bin := matrix_multiply(submatrix_bin, inverse_bin)
+		defer matrix_deinit(product2_bin)
+		for r in 0 ..< product1.num_rows * product1.field.n {
+			for c in 0 ..< product1.num_cols * product1.field.n {
+				testing.expect(t, matrix_get(product1_bin, r, c) == matrix_get(product2_bin, r, c),
+						fmt.tprintf(
+							"expected same, got [%d, %d] %d != %d\n",
+							r,
+							c,
+							matrix_get(product1_bin, r, c),
+							matrix_get(product2_bin, r, c),
+						),
+				)
+				if r == c {
+					testing.expect(t, matrix_get(product1_bin, r, c) == 1,
+						fmt.tprintf(
+							"expected 1, got matrix[%d, %d]=%d\n",
+							r,
+							c,
+							matrix_get(product1_bin, r, c),
+						),
+					)
+				} else {
+					testing.expect(t, matrix_get(product1_bin, r, c) == 0,
+						fmt.tprintf(
+							"expected 0, got matrix[%d, %d]=%d\n",
+							r,
+							c,
+							matrix_get(product1_bin, r, c),
+						),
+					)
+				}
+			}
+		}
 	}
 }
 
 @(test)
-test_matrix_binary_rep :: proc(t: ^testing.T) {
+test_matrix_to_binary :: proc(t: ^testing.T) {
 	field, _ := field_init(3)
 	m, _ := matrix_init_cauchy(5, 3, field)
 	defer matrix_deinit(m)
