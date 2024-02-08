@@ -1,4 +1,4 @@
-# odin-eraser
+# odin-erasure
 
 Library for erasure coding using binary finite fields.
 The code was originally based on [vishesh-khemani/erasure-coding](https://github.com/vishesh-khemani/erasure-coding).
