@@ -203,7 +203,7 @@ matrix_multiply :: proc(
 ) -> (
 	m: Finite_Field_Matrix,
 ) {
-	assert(a.num_cols == b.num_cols)
+	assert(a.num_cols == b.num_rows)
 
 	m = matrix_init(a.num_rows, b.num_cols, a.field)
 	for r := 0; r < a.num_rows; r += 1 {
